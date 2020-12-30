@@ -10,11 +10,23 @@
     <title>WebXR</title>
 </head>
 
+<style>
+    #warn {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: white;
+    }
+</style>
+
 <body>
     <div id="overlay">
         <div class="info-area">
             <div id="info"></div>
             <button id="xr-button" disabled>XR not found</button>
+            <div id="warn"></div>
+            <div id="artInfo" style="visibility: hidden; background-color: beige; float: right; width: 100px; height: 100px"></div>
         </div>
     </div>
 
@@ -41,30 +53,28 @@
         let lastFrame = Date.now();
         let mesh = null;
         let video = null;
-        const scale = 0.01;
+        let flag = false;
+        let arrowModel = null;
+        const scale = 0.012;
+        let count = 0;
+        let countflag = false;
 
         const initScene = (gl, session) => {
-
+            //-- scene, camera
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-
-            // load our gltf model
+            //---
+            //--- igloo model
             const loader = new ColladaLoader();
             loader.load('model.dae', (collada) => {
                 model = new THREE.Object3D();
                 collada.scene.scale.set(scale, scale, scale * 1.5);
                 collada.scene.rotateZ(-90 * Math.PI / 180);
-//                collada.scene.children[0].children.forEach((i) => {
-//                    collada.scene.children[0].remove(i);
-//                });
-//                collada.scene.children[0].remove(collada.scene.children[0].children[3]);
-//                collada.scene.children[0].remove(collada.scene.children[0].children[2]);
-//                collada.scene.children[0].remove(collada.scene.children[0].children[1]);
-                
+
                 model.add(collada.scene);
-                //scene.add(model);
             });
-            
+            //---
+            //--- video object
             video = document.getElementById('video');
 
             const texture = new THREE.VideoTexture(video);
@@ -72,7 +82,7 @@
             texture.magFilter = THREE.LinearFilter;
 
             texture.format = THREE.RGBFormat;
-            const geometry = new THREE.PlaneBufferGeometry(1, 0.5, 1);
+            const geometry = new THREE.PlaneBufferGeometry(0.8, 0.45, 1);
             const material = new THREE.MeshBasicMaterial({
                 map: texture,
                 side: THREE.DoubleSide,
@@ -80,12 +90,22 @@
 
             mesh = new THREE.Mesh(geometry, material);
             mesh.scale.set(1, 0.5, 1);
-
+            //---
+            //--- arrow object
+            loader.load('model 2.dae', (collada) => {
+                arrowModel = new THREE.Object3D();
+                collada.scene.scale.set(0.3, 0.3, 0.3);
+                collada.scene.rotateZ(180 * Math.PI / 180);
+                
+                arrowModel.add(collada.scene);
+            });
+            //--- light
             const light = new THREE.PointLight(0xffffff, 2, 100); // soft white light
             light.position.z = 1;
             light.position.y = 5;
             scene.add(light);
-
+            //---
+            
             // create and configure three.js renderer with XR support
             renderer = new THREE.WebGLRenderer({
                 antialias: true,
@@ -98,7 +118,8 @@
             renderer.xr.enabled = true;
             renderer.xr.setReferenceSpaceType('local');
             renderer.xr.setSession(session);
-
+            document.body.appendChild(renderer.domElement);
+            //---
             // simple sprite to indicate detected surfaces
             reticle = new THREE.Mesh(
                 new THREE.RingBufferGeometry(0.15, 0.2, 32).rotateX(-Math.PI / 2),
@@ -106,10 +127,12 @@
                     color: 0x0fff00
                 })
             );
+            //---
             // we will update it's matrix later using WebXR hit test pose matrix
             reticle.matrixAutoUpdate = false;
             reticle.visible = false;
             scene.add(reticle);
+            //---
         };
 
         // button to start XR experience
@@ -171,6 +194,7 @@
             // Show which type of DOM Overlay got enabled (if any)
             if (session.domOverlayState) {
                 info.innerHTML = 'DOM Overlay type: ' + session.domOverlayState.type;
+                document.getElementById('warn').innerHTML = '携帯を動かしてください';
             }
 
             // create a canvas element and WebGL context for rendering
@@ -220,45 +244,87 @@
         }
 
         function placeObject() {
-            if (reticle.visible && model) {
+            if (reticle.visible && model && flag && arrowModel) {
+                const pos = reticle.getWorldPosition();
+                const distance = pos.distanceTo(new THREE.Vector3(0, 0, 0));
+                
+                mesh.name = "サンプル動画";
+
                 reticle.visible = false;
                 xrHitTestSource.cancel();
                 xrHitTestSource = null;
+                document.getElementById('warn').innerHTML = '';
                 // we'll be placing our object right where the reticle was
-                const pos = reticle.getWorldPosition();
-                const distance = pos.distanceTo(new THREE.Vector3(0, 0, 0));
+
                 scene.remove(reticle);
                 model.position.set(pos.x, pos.y, pos.z);
                 scene.add(model);
-                mesh.position.set(pos.x, pos.y, pos.z);
-                //mesh.position.setZ(pos.z + 0.3);
-                mesh.position.setY(pos.y + 0.3);
+                mesh.position.set(pos.x, 0.24, pos.z - 0.24);
                 scene.add(mesh);
+                arrowModel.position.set(pos.x, pos.y, pos.z / 2);
+                scene.add(arrowModel);
                 video.play();
 
                 // start object animation right away
                 //toggleAnimation();
                 // instead of placing an object we will just toggle animation state
                 document.getElementById("overlay").removeEventListener('click', placeObject);
+                document.getElementById("overlay").addEventListener('touchstart', touchObj);
             }
         }
-
-        //        function toggleAnimation() {
-        //            if (action.isRunning()) {
-        //                action.stop();
-        //                action.reset();
-        //            } else {
-        //                action.play();
-        //            }
-        //        }
-
+        
+        function touchObj(event){
+            //터치 판정
+            event.preventDefault();
+            const x = (event.targetTouches[0].pageX / window.innerWidth) * 2 + -1;
+            const y = -(event.targetTouches[0].pageY / window.innerHeight) * 2 + 1;
+      
+            const vector = new THREE.Vector2(x, y);
+            const raycast = new THREE.Raycaster();
+            
+            raycast.setFromCamera(vector, camera);
+            const intersects = raycast.intersectObjects(scene.children);
+            
+            const div = document.getElementById('artInfo');
+            if(intersects.length !== 0){
+                if(intersects[0].object.name){
+                    div.style.visibility = "visible";
+                    div.innerHTML = `作品情報：${intersects[0].object.name}`;
+                }
+            }else{
+                div.style.visibility = "hidden";
+            }
+        }
+        
         // Utility function to update animated objects
         function updateAnimation() {
-            let dt = (Date.now() - lastFrame) / 1000;
-            lastFrame = Date.now();
-            //            if (mixer) {
-            //                mixer.update(dt);
-            //            }
+            const warn = document.getElementById('warn');
+            if (reticle.visible && model) {
+                const pos = reticle.getWorldPosition();
+                const distance = pos.distanceTo(new THREE.Vector3(0, 0, 0));
+                if (distance < 2) {
+                    reticle.material.color.setHex(0xff0000);
+                    warn.innerHTML = '距離が足りません。もっと遠くから設置してください。';
+                    flag = false;
+                } else {
+                    reticle.material.color.setHex(0x0fff00);
+                    warn.innerHTML = 'タップしてください。';
+                    flag = true;
+                }
+            }
+            if(arrowModel){
+                if(count < 10 && !countflag){
+                    arrowModel.position.y += 0.01;
+                    count++;
+                }
+                if(count === 10 || count === 0){
+                    countflag = !countflag;
+                }
+                if(count >= 0 && countflag){
+                    arrowModel.position.y -= 0.01;
+                    count --;
+                }
+            }
         }
 
         function onXRFrame(t, frame) {
