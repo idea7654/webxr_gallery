@@ -55,6 +55,7 @@
         let video = null;
         let flag = false;
         let arrowModel = null;
+        let monariza = null;
         const scale = 0.012;
         let count = 0;
         let countflag = false;
@@ -99,6 +100,18 @@
                 
                 arrowModel.add(collada.scene);
             });
+            //---
+            //--- monariza
+            const texLoader = new THREE.TextureLoader();
+            const Montexture = texLoader.load('monariza.jpg');
+            const Mongeometry = new THREE.PlaneBufferGeometry(0.3, 0.4, 1);
+            const Monmaterial = new THREE.MeshBasicMaterial({
+                map: Montexture
+            });
+            monariza = new THREE.Mesh(Mongeometry, Monmaterial);
+            monariza.scale.set(1, 1, 1);
+            monariza.rotateZ(90 * Math.PI / 180);
+            //---
             //--- light
             const light = new THREE.PointLight(0xffffff, 2, 100); // soft white light
             light.position.z = 1;
@@ -259,11 +272,13 @@
                 scene.remove(reticle);
                 model.position.set(pos.x, pos.y, pos.z);
                 scene.add(model);
-                mesh.position.set(pos.x, 0.24, pos.z - 0.24);
+                mesh.position.set(pos.x, 0.24, pos.z + pos.z / 5);
                 scene.add(mesh);
                 arrowModel.position.set(pos.x, pos.y, pos.z / 2);
                 scene.add(arrowModel);
                 video.play();
+                monariza.position.set(pos.x - pos.x / 5, 0.24, pos.z);
+                scene.add(monariza);
 
                 // start object animation right away
                 //toggleAnimation();
@@ -302,7 +317,7 @@
             if (reticle.visible && model) {
                 const pos = reticle.getWorldPosition();
                 const distance = pos.distanceTo(new THREE.Vector3(0, 0, 0));
-                if (distance < 2) {
+                if (distance < 3) {
                     reticle.material.color.setHex(0xff0000);
                     warn.innerHTML = '距離が足りません。もっと遠くから設置してください。';
                     flag = false;
