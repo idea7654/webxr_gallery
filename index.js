@@ -20,6 +20,7 @@ let flag = false;
 let arrowModel = null;
 let monariza = null;
 let fakeM = null;
+let fakeV = null;
 const scale = 0.012;
 let count = 0;
 let countflag = false;
@@ -39,7 +40,10 @@ const initScene = (gl, session) => {
 
         fakeM = new THREE.Object3D();
         fakeM.position.set(-1, 1.24, 0);
+        fakeV = new THREE.Object3D();
+        fakeV.position.set(0, 1.24, -0.9);
         model.add(fakeM);
+        model.add(fakeV);
     });
     //---
 
@@ -243,7 +247,7 @@ function placeObject() {
         const pos = reticle.getWorldPosition();
         const distance = pos.distanceTo(new THREE.Vector3(0, 0, 0));
 
-        mesh.name = "サンプル動画";
+        mesh.name = "샘플영상";
         monariza.name = "monariza";
 
         reticle.visible = false;
@@ -255,14 +259,19 @@ function placeObject() {
         scene.remove(reticle);
         model.position.set(pos.x, pos.y, pos.z);
         scene.add(model);
-        mesh.position.set(pos.x, 1.24, pos.z + pos.z / 5);
+        
+        const childPos0 = fakeV.getWorldPosition();
+        mesh.position.set(childPos0.x, childPos0.y, childPos0.z);
         scene.add(mesh);
+        
         arrowModel.position.set(pos.x, pos.y, pos.z / 2);
         scene.add(arrowModel);
-        video.play();
+        
         const childPos = fakeM.getWorldPosition();
         monariza.position.set(childPos.x, childPos.y, childPos.z);
         scene.add(monariza);
+        
+        video.play();
 
         // start object animation right away
         //toggleAnimation();
