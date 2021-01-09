@@ -24,6 +24,9 @@ let fakeV = null;
 const scale = 0.012;
 let count = 0;
 let countflag = false;
+let compassflag = true;
+let compassDegree = null;
+let gps = null;
 
 const initScene = (gl, session) => {
     //-- scene, camera
@@ -167,7 +170,7 @@ function onButtonClicked() {
     if (!xrSession) {
         navigator.xr.requestSession('immersive-ar', {
             optionalFeatures: ['dom-overlay'],
-            requiredFeatures: ['local', 'hit-test'],
+            requiredFeatures: ['unbounded', 'hit-test'],
             domOverlay: {
                 root: document.getElementById('overlay')
             }
@@ -177,23 +180,82 @@ function onButtonClicked() {
     }
 }
 
-function handleOrientation(event) {
-    const absolute = event.absolute;
-    const z = event.alpha;
-    const x = event.beta;
-    const y = event.gamma;
-
-    //console.log(absolute, x, y, z);
+function getGPS(){
+    function success(position){
+        gps = {
+            lat: position.coords.latitude,
+            lon: position.coords.longitude
+        };
+    }
+    function error(){
+        alert('error');
+    }
+    const options = {
+        enableHighAccuracy: true,
+        maximumAge: 300000,
+        timeout: 27000
+    };
+    
+    navigator.geolocation.watchPosition(success, error, options);
 }
+
+function handleMotion(event) {
+    if (compassflag) {
+        const compass = event.webkitCompassHeading || Math.abs(event.alpha - 360);
+        compassDegree = 360 - Math.ceil(compass);
+        getGPS();
+        const div = document.getElementById('artInfo');
+        div.style.visibility = 'visible';
+        div.innerHTML = `gps: ${gps.lat}, ${gps.lon}`;
+        compassflag = false;
+    }
+}
+
+//function compassHeading(alpha, beta, gamma) {
+//    // Convert degrees to radians
+//    const alphaRad = alpha * (Math.PI / 180);
+//    const betaRad = beta * (Math.PI / 180);
+//    const gammaRad = gamma * (Math.PI / 180);
+//
+//    // Calculate equation components
+//    const cA = Math.cos(alphaRad);
+//    const sA = Math.sin(alphaRad);
+//    const cB = Math.cos(betaRad);
+//    const sB = Math.sin(betaRad);
+//    const cG = Math.cos(gammaRad);
+//    const sG = Math.sin(gammaRad);
+//
+//    // Calculate A, B, C rotation components
+//    const rA = -cA * sG - sA * sB * cG;
+//    const rB = -sA * sG + cA * sB * cG;
+//    const rC = -cB * cG;
+//
+//    // Calculate compass heading
+//    let compassHeading = Math.atan(rA / rB);
+//
+//    // Convert from half unit circle to whole unit circle
+//    if (rB < 0) {
+//        compassHeading += Math.PI;
+//    } else if (rA < 0) {
+//        compassHeading += 2 * Math.PI;
+//    }
+//
+//    // Convert radians to degrees
+//    compassHeading *= 180 / Math.PI;
+//
+//    return compassHeading;
+//}
 
 function onSessionStarted(session) {
     xrSession = session;
     xrButton.innerHTML = 'Exit AR';
-    window.addEventListener('deviceorientation', handleOrientation, true);
+    window.addEventListener('deviceorientationabsolute', handleMotion, true);
+
     // Show which type of DOM Overlay got enabled (if any)
     if (session.domOverlayState) {
         info.innerHTML = 'DOM Overlay type: ' + session.domOverlayState.type;
-        document.getElementById('warn').innerHTML = '携帯を動かしてください';
+        //document.getElementById('warn').innerHTML = '携帯を動かしてください';
+        document.getElementById('warn').innerHTML = '핸드폰을 움직여보세요';
     }
 
     // create a canvas element and WebGL context for rendering
@@ -211,13 +273,15 @@ function onSessionStarted(session) {
     // will be obtained via xrHitTestSource variable
     session.requestReferenceSpace('viewer').then((refSpace) => {
         session.requestHitTestSource({
-            space: refSpace
+            space: refSpace,
+            offsetRay: new XRRay(),
+            //entityTypes: ["mesh"]
         }).then((hitTestSource) => {
             xrHitTestSource = hitTestSource;
         });
     });
 
-    session.requestReferenceSpace('local').then((refSpace) => {
+    session.requestReferenceSpace('unbounded').then((refSpace) => {
         xrRefSpace = refSpace;
         session.requestAnimationFrame(onXRFrame);
     });
@@ -245,7 +309,7 @@ function onSessionEnded(event) {
 function placeObject() {
     if (reticle.visible && model && flag && arrowModel) {
         const pos = reticle.getWorldPosition();
-        const distance = pos.distanceTo(new THREE.Vector3(0, 0, 0));
+        //const distance = pos.distanceTo(new THREE.Vector3(0, 0, 0));
 
         mesh.name = "샘플영상";
         monariza.name = "monariza";
@@ -259,19 +323,20 @@ function placeObject() {
         scene.remove(reticle);
         model.position.set(pos.x, pos.y, pos.z);
         scene.add(model);
-        
+
         const childPos0 = fakeV.getWorldPosition();
         mesh.position.set(childPos0.x, childPos0.y, childPos0.z);
         scene.add(mesh);
-        
+
         arrowModel.position.set(pos.x, pos.y, pos.z / 2);
         scene.add(arrowModel);
-        
+
         const childPos = fakeM.getWorldPosition();
         monariza.position.set(childPos.x, childPos.y, childPos.z);
         scene.add(monariza);
-        
+
         video.play();
+        seccomflag = true;
 
         // start object animation right away
         //toggleAnimation();
@@ -309,16 +374,30 @@ function updateAnimation() {
     const warn = document.getElementById('warn');
     if (reticle.visible && model) {
         const pos = reticle.getWorldPosition();
-        const distance = pos.distanceTo(new THREE.Vector3(0, 0, 0));
-        if (distance < 3) {
-            reticle.material.color.setHex(0xff0000);
-            warn.innerHTML = '距離が足りません。もっと遠くから設置してください。';
-            flag = false;
-        } else {
-            reticle.material.color.setHex(0x0fff00);
-            warn.innerHTML = 'タップしてください。';
-            flag = true;
-        }
+        const div = document.getElementById('artInfo');
+        const seta = compassDegree * Math.PI / 180;
+        const gpscor = {
+            x: Math.cos(seta) * -pos.x - Math.sin(seta) * -pos.z,
+            z: Math.sin(seta) * -pos.x + Math.cos(seta) * -pos.z
+        };
+        const objgps = {
+            lat: gps.lat + (gpscor.x / 111000),
+            lon: gps.lon + (gpscor.z / 111000)
+        };
+        div.style.visibility = "visible";
+        div.innerHTML = `lat: ${objgps.lat} lon: ${objgps.lon}`;
+//        const distance = pos.distanceTo(new THREE.Vector3(0, 0, 0));
+//        if (distance < 5) {
+//            reticle.material.color.setHex(0xff0000);
+//            //warn.innerHTML = '距離が足りません。もっと遠くから設置してください。';
+//            warn.innerHTML = '너무 가깝습니다. 좀 더 멀리서 설치하세요'
+//            flag = false;
+//        } else {
+//            reticle.material.color.setHex(0x0fff00);
+//            //warn.innerHTML = 'タップしてください。';
+//            warn.innerHTML = '눌러서 설치';
+//            flag = true;
+//        }
     }
     if (arrowModel) {
         if (count < 10 && !countflag) {
@@ -335,10 +414,12 @@ function updateAnimation() {
     }
 }
 
+
 function onXRFrame(t, frame) {
     let session = frame.session;
+    let xrViewerPose = frame.getViewerPose(xrRefSpace);
     session.requestAnimationFrame(onXRFrame);
-    if (xrHitTestSource) {
+    if (xrHitTestSource && xrViewerPose) {
         // obtain hit test results by casting a ray from the center of device screen
         // into AR view. Results indicate that ray intersected with one or more detected surfaces
         const hitTestResults = frame.getHitTestResults(xrHitTestSource);
@@ -348,11 +429,12 @@ function onXRFrame(t, frame) {
             // place a reticle at the intersection point
             reticle.matrix.fromArray(pose.transform.matrix);
             reticle.visible = true;
+            
         }
     } else { // do not show a reticle if no surfaces are intersected
         reticle.visible = false;
     }
-
+    //session.drawXRFrame(frame, xrViewerPose);
     // update object animation
     updateAnimation();
     // bind our gl context that was created with WebXR to threejs renderer
